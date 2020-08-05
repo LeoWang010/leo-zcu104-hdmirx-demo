@@ -3,3 +3,15 @@
 
 CONFIG_gpio-demo
 CONFIG_peekpoke
+CONFIG_gstreamer-vcu-examples
+CONFIG_packagegroup-petalinux-v4lutils
+CONFIG_packagegroup-petalinux-audio
+CONFIG_gstreamer-vcu-notebooks
+CONFIG_trd-init
+CONFIG_kernel-module-hdmi
+CONFIG_custom-edid
+CONFIG_gst-shark
+CONFIG_sds_lib
+CONFIG_vcu-gst-app
+CONFIG_vcu-qt
+CONFIG_pcie-transcode-app
