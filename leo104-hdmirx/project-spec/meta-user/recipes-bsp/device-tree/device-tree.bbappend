@@ -1,6 +1,10 @@
+SRC_URI_append ="\
+    file://zcu104-reva.dtsi \
+    file://common.dtsi \
+    file://system-user.dtsi \
+    file://apm.dtsi \
+"
 FILESEXTRAPATHS_prepend := "${THISDIR}/files:"
-
-SRC_URI += "file://system-user.dtsi"
 
 python () {
     if d.getVar("CONFIG_DISABLE"):

@@ -1,0 +1,12 @@
+
+/ {
+        chosen {
+                bootargs = "earlycon clk_ignore_unused consoleblank=0 cma=512M uio_pdrv_genirq.of_id=generic-uio  iommu=force";
+                stdout-path = "serial0:115200n8";
+        };
+};
+
+
+&uart1 {
+    status = "disabled";
+};
