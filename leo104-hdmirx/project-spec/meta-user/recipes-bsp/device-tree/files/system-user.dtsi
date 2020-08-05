@@ -1,3 +1,128 @@
-/include/ "system-conf.dtsi"
-/ {
+#include "zcu104-reva.dtsi"
+
+#include "common.dtsi"
+#include "apm.dtsi"
+
+&gem3 {
+	status = "okay";
+	phy-mode = "rgmii-id";
 };
+
+&i2c1 {
+	i2c-mux@74 {
+	/delete-node/   i2c@2;
+	};
+};
+
+
+&hdmi_input_v_frmbuf_wr_0 {
+	reset-gpios = <&gpio 93 1>;
+	xlnx,dma-align = <32>;
+};
+
+&hdmi_input_v_frmbuf_wr_1 {
+	reset-gpios = <&gpio 92 1>;
+	xlnx,dma-align = <32>;
+};
+
+&hdmi_input_v_frmbuf_wr_2 {
+	reset-gpios = <&gpio 99 1>;
+	xlnx,dma-align = <32>;
+};
+
+&hdmi_input_v_hdmi_rx_ss_0 {
+	clock-names = "s_axi_cpu_aclk", "s_axis_video_aclk";
+	clocks = <&vid_s_axi_clk>, <&vid_stream_clk>;
+	phy-names = "hdmi-phy0", "hdmi-phy1", "hdmi-phy2";
+	phys = <&vphy_lane0 0 1 1 0>, <&vphy_lane1 0 1 1 0>, <&vphy_lane2 0 1 1 0>;
+	xlnx,edid-ram-size = <0x100>;
+	xlnx,input-pixels-per-clock = <2>;
+	xlnx,max-bits-per-component = <8>;
+	hdmirx_ports: ports {
+		#address-cells = <1>;
+		#size-cells = <0>;
+		hdmirx_port: port@0 {
+			/* Fill the fields xlnx,video-format and xlnx,video-width based on user requirement */
+			reg = <0>;
+			xlnx,video-format = <0>;
+			xlnx,video-width = <10>;
+			hdmi_rx_out: endpoint {
+			    remote-endpoint = <&vpss_scaler_in>;
+			};
+		};
+	};
+};
+
+
+&hdmi_input_v_proc_ss_0 {
+	compatible = "xlnx,v-vpss-scaler-2.2";
+	reset-gpios = <&gpio 78 1>;
+	vpss_ports: ports {
+		#address-cells = <1>;
+		#size-cells = <0>;
+		vpss_port0: port@0 {
+			/* For xlnx,video-format user needs to fill as per their requirement */
+			reg = <0>;
+			xlnx,video-format = <3>;
+			xlnx,video-width = <8>;
+			vpss_scaler_in: endpoint {
+				remote-endpoint = <&hdmi_rx_out>;
+			};
+		};
+		vpss_port1: port@1 {
+			/* For xlnx,video-format user needs to fill as per their requirement */
+			reg = <1>;
+			xlnx,video-format = <3>;
+			xlnx,video-width = <8>;
+			vpss_scaler_out: endpoint {
+				remote-endpoint = <&vcap_hdmi_in>;
+			};
+		};
+	};
+};
+
+&vid_phy_controller {
+        clock-names = "vid_phy_axi4lite_aclk", "dru-clk";
+        clocks = <&vid_s_axi_clk>, <&druclk>;
+};
+
+&mpsoc_ss_hdmi_ctrl_iic {
+        clocks = <&vid_s_axi_clk>;
+};
+&amba_pl {
+        vid_stream_clk: vid_stream_clk {
+                compatible = "fixed-clock";
+                #clock-cells = <0>;
+                clock-frequency = <300000000>;
+        };
+
+        vid_s_axi_clk: vid_s_axi_clk {
+                compatible = "fixed-clock";
+                #clock-cells = <0>;
+                clock-frequency = <99990000>;
+        };
+	
+        druclk: dru_clk {
+            compatible = "fixed-clock";
+            #clock-cells = <0>;
+            clock-frequency = <156250000>;
+        };
+
+	vcap_hdmi {
+		compatible = "xlnx,video";
+		dma-names = "port0";
+		dmas = <&hdmi_input_v_frmbuf_wr_0 0>;
+		vcap_hdmi_ports: ports {
+			#address-cells = <1>;
+			#size-cells = <0>;
+			vcap_hdmi_port: port@0 {
+				direction = "input";
+				reg = <0>;
+				vcap_hdmi_in: endpoint {
+					remote-endpoint = <&vpss_scaler_out>;
+				};
+			};
+		};
+	};
+};
+
