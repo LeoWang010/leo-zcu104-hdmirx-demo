@@ -1,0 +1,450 @@
+From 4a7cd165340825e25b5f8689c71c667f4e7b01a7 Mon Sep 17 00:00:00 2001
+From: jadas <jadas@xilinx.com>
+Date: Tue, 7 May 2019 15:54:02 +0530
+Subject: [PATCH] Add 2nd HDMI support by adding a dummy driver
+
+Signed-off-by: jadas <jadas@xilinx.com>
+---
+ drivers/media/platform/xilinx/Kconfig        |   6 +
+ drivers/media/platform/xilinx/Makefile       |   1 +
+ drivers/media/platform/xilinx/xilinx-dummy.c | 404 +++++++++++++++++++++++++++
+ 3 files changed, 411 insertions(+)
+ create mode 100644 drivers/media/platform/xilinx/xilinx-dummy.c
+
+diff --git a/drivers/media/platform/xilinx/Kconfig b/drivers/media/platform/xilinx/Kconfig
+index 6098ad8..6c50252 100644
+--- a/drivers/media/platform/xilinx/Kconfig
++++ b/drivers/media/platform/xilinx/Kconfig
+@@ -151,4 +151,10 @@ config VIDEO_XILINX_M2M
+ 	  Driver for Xilinx V4L2 mem2mem pipeline operation to achieve memory
+ 	  copy between two different physical memories using DMA transfers.
+ 
++config VIDEO_XILINX_DUMMY
++        tristate "Xilinx dumy Video Source"
++        depends on VIDEO_XILINX
++        ---help---
++           Driver for the Xilinx dummy video source
++
+ endif #VIDEO_XILINX
+diff --git a/drivers/media/platform/xilinx/Makefile b/drivers/media/platform/xilinx/Makefile
+index 1b3a827..8e9de79 100644
+--- a/drivers/media/platform/xilinx/Makefile
++++ b/drivers/media/platform/xilinx/Makefile
+@@ -22,3 +22,4 @@ obj-$(CONFIG_VIDEO_XILINX_TPG) += xilinx-tpg.o
+ obj-$(CONFIG_VIDEO_XILINX_VPSS_CSC) += xilinx-vpss-csc.o
+ obj-$(CONFIG_VIDEO_XILINX_VPSS_SCALER) += xilinx-vpss-scaler.o
+ obj-$(CONFIG_VIDEO_XILINX_VTC) += xilinx-vtc.o
++obj-$(CONFIG_VIDEO_XILINX_DUMMY) += xilinx-dummy.o
+diff --git a/drivers/media/platform/xilinx/xilinx-dummy.c b/drivers/media/platform/xilinx/xilinx-dummy.c
+new file mode 100644
+index 0000000..5b85496
+--- /dev/null
++++ b/drivers/media/platform/xilinx/xilinx-dummy.c
+@@ -0,0 +1,404 @@
++/*
++ * Xilinx Test Pattern Generator
++ *
++ * Copyright (C) 2013-2015 Ideas on Board
++ * Copyright (C) 2013-2015 Xilinx, Inc.
++ *
++ * Contacts: Hyun Kwon <hyun.kwon@xilinx.com>
++ *           Laurent Pinchart <laurent.pinchart@ideasonboard.com>
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License version 2 as
++ * published by the Free Software Foundation.
++ */
++
++#include <linux/device.h>
++#include <linux/gpio/consumer.h>
++#include <linux/module.h>
++#include <linux/of.h>
++#include <linux/platform_device.h>
++#include <linux/xilinx-v4l2-controls.h>
++
++#include <media/v4l2-async.h>
++#include <media/v4l2-ctrls.h>
++#include <media/v4l2-subdev.h>
++
++#include "xilinx-hls-common.h"
++#include "xilinx-vip.h"
++#include "xilinx-vtc.h"
++
++/**
++ * struct xtpg_device - Xilinx Test Pattern Generator device structure
++ * @xvip: Xilinx Video IP device
++ * @pads: media pads
++ * @npads: number of pads (1 or 2)
++ * @has_input: whether an input is connected to the sink pad
++ * @formats: active V4L2 media bus format for each pad
++ * @default_format: default V4L2 media bus format
++ * @vip_format: format information corresponding to the active format
++ * @streaming: is the video stream active
++ */
++struct xtpg_device {
++	struct xvip_device xvip;
++
++	struct media_pad pads[2];
++	unsigned int npads;
++	bool has_input;
++
++	struct v4l2_mbus_framefmt formats[2];
++	struct v4l2_mbus_framefmt default_format;
++	const struct xvip_video_format *vip_format;
++
++	bool streaming;
++
++	struct xvtc_device *vtc;
++};
++
++static inline struct xtpg_device *to_tpg(struct v4l2_subdev *subdev)
++{
++	return container_of(subdev, struct xtpg_device, xvip.subdev);
++}
++
++/* -----------------------------------------------------------------------------
++ * V4L2 Subdevice Video Operations
++ */
++
++static int xtpg_s_stream(struct v4l2_subdev *subdev, int enable)
++{
++	return 0;
++}
++
++/* -----------------------------------------------------------------------------
++ * V4L2 Subdevice Pad Operations
++ */
++
++static struct v4l2_mbus_framefmt *
++__xtpg_get_pad_format(struct xtpg_device *xtpg,
++		      struct v4l2_subdev_pad_config *cfg,
++		      unsigned int pad, u32 which)
++{
++	switch (which) {
++	case V4L2_SUBDEV_FORMAT_TRY:
++		return v4l2_subdev_get_try_format(&xtpg->xvip.subdev, cfg, pad);
++	case V4L2_SUBDEV_FORMAT_ACTIVE:
++		return &xtpg->formats[pad];
++	default:
++		return NULL;
++	}
++}
++
++static int xtpg_get_format(struct v4l2_subdev *subdev,
++			   struct v4l2_subdev_pad_config *cfg,
++			   struct v4l2_subdev_format *fmt)
++{
++	struct xtpg_device *xtpg = to_tpg(subdev);
++
++	fmt->format = *__xtpg_get_pad_format(xtpg, cfg, fmt->pad, fmt->which);
++
++	return 0;
++}
++
++static int xtpg_set_format(struct v4l2_subdev *subdev,
++			   struct v4l2_subdev_pad_config *cfg,
++			   struct v4l2_subdev_format *fmt)
++{
++	struct xtpg_device *xtpg = to_tpg(subdev);
++	struct v4l2_mbus_framefmt *__format;
++	__format = __xtpg_get_pad_format(xtpg, cfg, fmt->pad, fmt->which);
++
++	/* In two pads mode the source pad format is always identical to the
++	 * sink pad format.
++	 */
++	if (xtpg->npads == 2 && fmt->pad == 1) {
++		fmt->format = *__format;
++		return 0;
++	}
++	*__format = fmt->format;
++	xvip_set_format_size(__format, fmt);
++
++	fmt->format = *__format;
++
++	/* Propagate the format to the source pad. */
++	if (xtpg->npads == 2) {
++		__format = __xtpg_get_pad_format(xtpg, cfg, 1, fmt->which);
++		*__format = fmt->format;
++	}
++
++	return 0;
++}
++
++/* -----------------------------------------------------------------------------
++ * V4L2 Subdevice Operations
++ */
++
++static int xtpg_enum_frame_size(struct v4l2_subdev *subdev,
++				struct v4l2_subdev_pad_config *cfg,
++				struct v4l2_subdev_frame_size_enum *fse)
++{
++	struct v4l2_mbus_framefmt *format;
++
++	format = v4l2_subdev_get_try_format(subdev, cfg, fse->pad);
++
++	if (fse->index || fse->code != format->code)
++		return -EINVAL;
++
++	/* Min / max values for pad 0 is always fixed in both one and two pads
++	 * modes. In two pads mode, the source pad(= 1) size is identical to
++	 * the sink pad size */
++	if (fse->pad == 0) {
++		fse->min_width = XVIP_MIN_WIDTH;
++		fse->max_width = XVIP_MAX_WIDTH;
++		fse->min_height = XVIP_MIN_HEIGHT;
++		fse->max_height = XVIP_MAX_HEIGHT;
++	} else {
++		fse->min_width = format->width;
++		fse->max_width = format->width;
++		fse->min_height = format->height;
++		fse->max_height = format->height;
++	}
++
++	return 0;
++}
++
++static int xtpg_open(struct v4l2_subdev *subdev, struct v4l2_subdev_fh *fh)
++{
++	struct xtpg_device *xtpg = to_tpg(subdev);
++	struct v4l2_mbus_framefmt *format;
++
++	format = v4l2_subdev_get_try_format(subdev, fh->pad, 0);
++	*format = xtpg->default_format;
++
++	if (xtpg->npads == 2) {
++		format = v4l2_subdev_get_try_format(subdev, fh->pad, 1);
++		*format = xtpg->default_format;
++	}
++
++	return 0;
++}
++
++static int xtpg_close(struct v4l2_subdev *subdev, struct v4l2_subdev_fh *fh)
++{
++	return 0;
++}
++
++
++static struct v4l2_subdev_core_ops xtpg_core_ops = {
++};
++
++static struct v4l2_subdev_video_ops xtpg_video_ops = {
++	.s_stream = xtpg_s_stream,
++};
++
++static struct v4l2_subdev_pad_ops xtpg_pad_ops = {
++	.enum_mbus_code		= xvip_enum_mbus_code,
++	.enum_frame_size	= xtpg_enum_frame_size,
++	.get_fmt		= xtpg_get_format,
++	.set_fmt		= xtpg_set_format,
++};
++
++static struct v4l2_subdev_ops xtpg_ops = {
++	.core   = &xtpg_core_ops,
++	.video  = &xtpg_video_ops,
++	.pad    = &xtpg_pad_ops,
++};
++
++static const struct v4l2_subdev_internal_ops xtpg_internal_ops = {
++	.open	= xtpg_open,
++	.close	= xtpg_close,
++};
++
++/* -----------------------------------------------------------------------------
++ * Media Operations
++ */
++
++static const struct media_entity_operations xtpg_media_ops = {
++	.link_validate = v4l2_subdev_link_validate,
++};
++
++/* -----------------------------------------------------------------------------
++ * Power Management
++ */
++
++static int __maybe_unused xtpg_pm_suspend(struct device *dev)
++{
++	struct xtpg_device *xtpg = dev_get_drvdata(dev);
++
++	xvip_suspend(&xtpg->xvip);
++
++	return 0;
++}
++
++static int __maybe_unused xtpg_pm_resume(struct device *dev)
++{
++	struct xtpg_device *xtpg = dev_get_drvdata(dev);
++
++	xvip_resume(&xtpg->xvip);
++
++	return 0;
++}
++
++/* -----------------------------------------------------------------------------
++ * Platform Device Driver
++ */
++
++static int xtpg_parse_of(struct xtpg_device *xtpg)
++{
++	struct device *dev = xtpg->xvip.dev;
++	struct device_node *node = xtpg->xvip.dev->of_node;
++	struct device_node *ports;
++	struct device_node *port;
++	unsigned int nports = 0;
++	bool has_endpoint = false;
++
++
++	ports = of_get_child_by_name(node, "ports");
++	if (ports == NULL)
++		ports = node;
++
++	for_each_child_of_node(ports, port) {
++		const struct xvip_video_format *format;
++		struct device_node *endpoint;
++
++		if (!port->name || of_node_cmp(port->name, "port"))
++			continue;
++
++		format = xvip_of_get_format(port);
++		if (IS_ERR(format)) {
++			dev_err(dev, "invalid format in DT");
++			of_node_put(port);
++			return PTR_ERR(format);
++		}
++
++		/* Get and check the format description */
++		if (!xtpg->vip_format) {
++			xtpg->vip_format = format;
++		} else if (xtpg->vip_format != format) {
++			dev_err(dev, "in/out format mismatch in DT");
++			of_node_put(port);
++			return -EINVAL;
++		}
++
++		if (nports == 0) {
++			endpoint = of_get_next_child(port, NULL);
++			if (endpoint)
++				has_endpoint = true;
++			of_node_put(endpoint);
++		}
++
++		/* Count the number of ports. */
++		nports++;
++	}
++
++	if (nports != 1 && nports != 2) {
++		dev_err(dev, "invalid number of ports %u\n", nports);
++		return -EINVAL;
++	}
++
++	xtpg->npads = nports;
++	if (nports == 2 && has_endpoint)
++		xtpg->has_input = true;
++
++	return 0;
++}
++
++static int dummy_probe(struct platform_device *pdev)
++{
++	struct v4l2_subdev *subdev;
++	struct xtpg_device *xtpg;
++	u32 i;
++	u32 npatterns;
++	int ret;
++
++	xtpg = devm_kzalloc(&pdev->dev, sizeof(*xtpg), GFP_KERNEL);
++	if (!xtpg)
++		return -ENOMEM;
++
++	xtpg->xvip.dev = &pdev->dev;
++	ret = xtpg_parse_of(xtpg);
++	if (ret < 0)
++		return ret;
++
++	ret = xvip_init_resources(&xtpg->xvip);
++	if (ret < 0)
++		return ret;
++	/* Initiaize V4L2 subdevice and media entity. Pad numbers depend on the
++	 * number of pads.
++	 */
++		xtpg->pads[0].flags = MEDIA_PAD_FL_SOURCE;
++
++	/* Initialize the default format */
++	xtpg->default_format.code = MEDIA_BUS_FMT_VYYUYY8_1X24;
++	xtpg->default_format.field = V4L2_FIELD_NONE;
++	xtpg->default_format.colorspace = V4L2_COLORSPACE_REC709;
++	
++	xtpg->formats[0] = xtpg->default_format;
++	if (xtpg->npads == 2)
++		xtpg->formats[1] = xtpg->default_format;
++
++	/* Initialize V4L2 subdevice and media entity */
++	subdev = &xtpg->xvip.subdev;
++	v4l2_subdev_init(subdev, &xtpg_ops);
++	subdev->dev = &pdev->dev;
++	subdev->internal_ops = &xtpg_internal_ops;
++	strlcpy(subdev->name, dev_name(&pdev->dev), sizeof(subdev->name));
++	v4l2_set_subdevdata(subdev, xtpg);
++	subdev->flags |= V4L2_SUBDEV_FL_HAS_DEVNODE;
++	subdev->entity.ops = &xtpg_media_ops;
++
++	ret = media_entity_pads_init(&subdev->entity, xtpg->npads, xtpg->pads);
++	if (ret < 0)
++		goto error;
++
++	platform_set_drvdata(pdev, xtpg);
++
++	ret = v4l2_async_register_subdev(subdev);
++	if (ret < 0) {
++		dev_err(&pdev->dev, "failed to register subdev\n");
++		goto error;
++	}
++
++	return 0;
++
++error:
++	media_entity_cleanup(&subdev->entity);
++error_resource:
++	xvip_cleanup_resources(&xtpg->xvip);
++	return ret;
++}
++
++static int dummy_remove(struct platform_device *pdev)
++{
++	struct xtpg_device *xtpg = platform_get_drvdata(pdev);
++	struct v4l2_subdev *subdev = &xtpg->xvip.subdev;
++
++	v4l2_async_unregister_subdev(subdev);
++	media_entity_cleanup(&subdev->entity);
++
++	xvip_cleanup_resources(&xtpg->xvip);
++
++	return 0;
++}
++
++static SIMPLE_DEV_PM_OPS(xtpg_pm_ops, xtpg_pm_suspend, xtpg_pm_resume);
++
++static const struct of_device_id dummy_of_id_table[] = {
++	{ .compatible = "xlnx,dummy" },
++	{ }
++};
++MODULE_DEVICE_TABLE(of, dummy_of_id_table);
++
++static struct platform_driver dummy_driver = {
++	.driver = {
++		.name		= "xilinx Dummy Source",
++		.pm		= &xtpg_pm_ops,
++		.of_match_table	= dummy_of_id_table,
++	},
++	.probe			= dummy_probe,
++	.remove			= dummy_remove,
++};
++
++module_platform_driver(dummy_driver);
++
++MODULE_AUTHOR("Laurent Pinchart <laurent.pinchart@ideasonboard.com>");
++MODULE_DESCRIPTION("Xilinx Test Pattern Generator Driver");
++MODULE_LICENSE("GPL v2");
+-- 
+2.7.4
+

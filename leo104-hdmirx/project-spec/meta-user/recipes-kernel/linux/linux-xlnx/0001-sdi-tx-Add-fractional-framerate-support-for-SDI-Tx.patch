@@ -1,0 +1,158 @@
+From a11b26dd5778eb9eed040083bfc4eee3ca40251f Mon Sep 17 00:00:00 2001
+From: Anil Kumar M <amamidal@xilinx.com>
+Date: Fri, 10 Apr 2020 12:43:09 +0530
+Subject: [PATCH] sdi-tx: Add fractional framerate support for SDI-Tx
+
+Add fractional frame rate support to SDI-Tx by switching the
+clock to 148.35. Reset GT and PICXO after switching the clock.
+
+Signed-off-by: Anil Kumar M <amamidal@xilinx.com>
+---
+ drivers/gpu/drm/xlnx/xlnx_sdi.c | 61 ++++++++++++++++++++++++++++++++++++++++-
+ 1 file changed, 60 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/gpu/drm/xlnx/xlnx_sdi.c b/drivers/gpu/drm/xlnx/xlnx_sdi.c
+index e9fecb3..47d0434 100644
+--- a/drivers/gpu/drm/xlnx/xlnx_sdi.c
++++ b/drivers/gpu/drm/xlnx/xlnx_sdi.c
+@@ -14,6 +14,7 @@
+ #include <linux/clk.h>
+ #include <linux/component.h>
+ #include <linux/device.h>
++#include <linux/gpio/consumer.h>
+ #include <linux/of_device.h>
+ #include <linux/of_graph.h>
+ #include <linux/phy/phy.h>
+@@ -105,6 +106,7 @@
+ 
+ #define SDI_TIMING_PARAMS_SIZE		48
+ 
++#define CLK_RATE      148500000UL
+ /**
+  * enum payload_line_1 - Payload Ids Line 1 number
+  * @PAYLD_LN1_HD_3_6_12G:	line 1 HD,3G,6G or 12G mode value
+@@ -135,6 +137,7 @@ enum payload_line_2 {
+  * @connector: DRM connector structure
+  * @dev: device structure
+  * @base: Base address of SDI subsystem
++ * @rst_gpio: GT reset gpio
+  * @mode_flags: SDI operation mode related flags
+  * @wait_event: wait event
+  * @event_received: wait event status
+@@ -180,6 +183,8 @@ struct xlnx_sdi {
+ 	struct drm_connector connector;
+ 	struct device *dev;
+ 	void __iomem *base;
++	struct gpio_desc *rst_gpio;
++	struct gpio_desc *picxo_rst;
+ 	u32 mode_flags;
+ 	wait_queue_head_t wait_event;
+ 	bool event_received;
+@@ -195,6 +200,7 @@ struct xlnx_sdi {
+ 	bool sdi_420_out_val;
+ 	struct drm_property *is_frac_prop;
+ 	bool is_frac_prop_val;
++	bool is_frac_prev_val;
+ 	struct xlnx_bridge *bridge;
+ 	struct drm_property *height_out;
+ 	u32 height_out_prop_val;
+@@ -209,6 +215,7 @@ struct xlnx_sdi {
+ 	struct drm_property *use_ds2_3ga_prop;
+ 	bool use_ds2_3ga_val;
+ 	struct drm_display_mode video_mode;
++	unsigned long prev_clkrate;
+ 	struct clk *axi_clk;
+ 	struct clk *sditx_clk;
+ 	struct clk *vidin_clk;
+@@ -852,6 +859,7 @@ static void xlnx_sdi_encoder_atomic_mode_set(struct drm_encoder *encoder,
+ 	struct videomode vm;
+ 	u32 payload, i;
+ 	u32 sditx_blank, vtc_blank;
++	unsigned long rate, clkrate;
+ 
+ 	/* Set timing parameters as per bridge output parameters */
+ 	xlnx_bridge_set_input(sdi->bridge, adjusted_mode->hdisplay,
+@@ -878,6 +886,29 @@ static void xlnx_sdi_encoder_atomic_mode_set(struct drm_encoder *encoder,
+ 		}
+ 	}
+ 
++	/* read and print existing clock val */
++	if (sdi->is_frac_prop_val)
++		/* calculate the clk for fractional support */
++		clkrate = (CLK_RATE * 1000) / 1001;
++	else
++		clkrate = CLK_RATE;
++
++	if (sdi->prev_clkrate != clkrate) {
++		/* set the new clkrate */
++		clk_set_rate(sdi->sditx_clk, clkrate);
++		sdi->prev_clkrate = clkrate;
++		/* read back the clk value to ensure its updated */
++		rate = clk_get_rate(sdi->sditx_clk);
++		/* initiate GT-reset */
++		/* Reset GT through GPIO */
++		gpiod_set_value(sdi->rst_gpio, 0);
++		gpiod_set_value(sdi->rst_gpio, 1);
++
++		/* Reset PICXO through GPIO */
++		gpiod_set_value(sdi->picxo_rst, 0);
++		gpiod_set_value(sdi->picxo_rst, 1);
++	}
++
+ 	xlnx_sdi_setup(sdi);
+ 	xlnx_sdi_set_config_parameters(sdi);
+ 
+@@ -1034,7 +1065,7 @@ static int xlnx_sdi_probe(struct platform_device *pdev)
+ 	struct resource *res;
+ 	struct xlnx_sdi *sdi;
+ 	struct device_node *vpss_node;
+-	int ret, irq;
++	int ret, err, irq;
+ 	struct device_node *ports, *port;
+ 	u32 nports = 0, portmask = 0;
+ 
+@@ -1083,6 +1114,7 @@ static int xlnx_sdi_probe(struct platform_device *pdev)
+ 		dev_err(dev, "failed to enable sditx_clk %d\n", ret);
+ 		goto err_disable_axi_clk;
+ 	}
++	sdi->prev_clkrate = clk_get_rate(sdi->sditx_clk);
+ 
+ 	ret = clk_prepare_enable(sdi->vidin_clk);
+ 	if (ret) {
+@@ -1177,6 +1209,33 @@ static int xlnx_sdi_probe(struct platform_device *pdev)
+ 		}
+ 	}
+ 
++    /* GPIO for resetting FMC Init Done */
++	sdi->rst_gpio = devm_gpiod_get(&pdev->dev, "reset", GPIOD_OUT_HIGH);
++	if (IS_ERR(sdi->rst_gpio)) {
++		err = PTR_ERR(sdi->rst_gpio);
++		if (err == -EPROBE_DEFER)
++			dev_info(&pdev->dev, "Probe deferred due to GPIO reset defer\n");
++		else
++			dev_info(&pdev->dev, "Unable to locate reset property in dt\n");
++	}
++	gpiod_set_value_cansleep(sdi->rst_gpio, 0x0);
++	gpiod_set_value(sdi->rst_gpio, 0);
++	gpiod_set_value(sdi->rst_gpio, 1);
++
++    /* GPIO for resetting PICXO IP */
++	sdi->picxo_rst = devm_gpiod_get(&pdev->dev, "picxo_rst", GPIOD_OUT_HIGH);
++	if (IS_ERR(sdi->picxo_rst)) {
++		err = PTR_ERR(sdi->picxo_rst);
++		if (err == -EPROBE_DEFER)
++			dev_info(&pdev->dev, "Probe deferred due to GPIO reset defer\n");
++		else
++			dev_info(&pdev->dev, "Unable to locate reset property in dt\n");
++	}
++	gpiod_set_value_cansleep(sdi->picxo_rst, 0x0);
++	gpiod_set_value(sdi->picxo_rst, 0);
++	gpiod_set_value(sdi->picxo_rst, 1);
++
++
+ 	/* video mode properties needed by audio driver are shared to audio
+ 	 * driver through a pointer in platform data. This will be used in
+ 	 * audio driver. The solution may be needed to modify/extend to avoid
+-- 
+2.7.4
+

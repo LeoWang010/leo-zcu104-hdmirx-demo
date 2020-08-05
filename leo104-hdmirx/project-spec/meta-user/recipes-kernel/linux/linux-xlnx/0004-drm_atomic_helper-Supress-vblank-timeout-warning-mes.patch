@@ -1,0 +1,30 @@
+From 01f138162245d70b863b0376962b9bf86550e45b Mon Sep 17 00:00:00 2001
+From: Anil Kumar M <amamidal@xilinx.com>
+Date: Tue, 29 May 2018 12:02:50 +0530
+Subject: [PATCH] drm_atomic_helper: Supress vblank timeout warning message
+
+Supressing drm timeout warning message from drm atomic framework.
+
+Signed-off-by: Anil Kumar M <amamidal@xilinx.com>
+---
+ drivers/gpu/drm/drm_atomic_helper.c |    4 ++--
+ 1 files changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/gpu/drm/drm_atomic_helper.c b/drivers/gpu/drm/drm_atomic_helper.c
+index 0028591..376fa62 100644
+--- a/drivers/gpu/drm/drm_atomic_helper.c
++++ b/drivers/gpu/drm/drm_atomic_helper.c
+@@ -1236,8 +1236,8 @@ int drm_atomic_helper_wait_for_fences(struct drm_device *dev,
+ 					drm_crtc_vblank_count(crtc),
+ 				msecs_to_jiffies(50));
+ 
+-		WARN(!ret, "[CRTC:%d:%s] vblank wait timed out\n",
+-		     crtc->base.id, crtc->name);
++//		WARN(!ret, "[CRTC:%d:%s] vblank wait timed out\n",
++//		     crtc->base.id, crtc->name);
+ 
+ 		drm_crtc_vblank_put(crtc);
+ 	}
+-- 
+1.7.1
+

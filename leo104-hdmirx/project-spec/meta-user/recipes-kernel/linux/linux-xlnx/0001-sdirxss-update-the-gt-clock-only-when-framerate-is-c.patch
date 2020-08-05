@@ -1,0 +1,132 @@
+From c0226d4e8269b014a8723ab081a280c55d241d31 Mon Sep 17 00:00:00 2001
+From: Anil Kumar M <amamidal@xilinx.com>
+Date: Sat, 4 Apr 2020 11:12:14 +0530
+Subject: [PATCH] sdirxss: update the gt clock only when framerate is changed
+
+Update the sdi gt clock only when there is change in the framerate
+from the previous value.
+
+Signed-off-by: Anil Kumar M <amamidal@xilinx.com>
+---
+ drivers/media/platform/xilinx/xilinx-sdirxss.c | 104 +++++++++++++------------
+ 1 file changed, 56 insertions(+), 48 deletions(-)
+
+diff --git a/drivers/media/platform/xilinx/xilinx-sdirxss.c b/drivers/media/platform/xilinx/xilinx-sdirxss.c
+index 29e599a..ae976de 100644
+--- a/drivers/media/platform/xilinx/xilinx-sdirxss.c
++++ b/drivers/media/platform/xilinx/xilinx-sdirxss.c
+@@ -901,55 +901,63 @@ static void xsdirxss_get_framerate(struct v4l2_fract *frame_interval,
+ 
+ static void xsdirxss_set_gtclk(struct xsdirxss_state *state)
+ {
+-	struct clk *gtclk;
+-	unsigned long clkrate;
+-	int ret, is_frac;
+-	struct xsdirxss_core *core = &state->core;
+-	u32 mode;
+-
+-	mode = xsdirxss_read(core, XSDIRX_MODE_DET_STAT_REG);
+-	mode &= XSDIRX_MODE_DET_STAT_RX_MODE_MASK;
+-
+-	/*
+-	 * TODO: For now, don't change the clock rate for any mode except 12G.
+-	 * In future, configure gt clock for all modes and enable clock only
+-	 * when needed (stream on/off).
+-	 */
+-	if (mode != XSDIRX_MODE_12GI_MASK && mode != XSDIRX_MODE_12GF_MASK)
+-		return;
+-
+-	xsdirx_core_disable(core);
+-	xsdirx_globalintr(core, false);
+-	xsdirx_disableintr(core, XSDIRX_INTR_ALL_MASK);
+-
+-	/* get sdi_rx_clk */
+-	gtclk = core->clks[1].clk;
+-	clkrate = clk_get_rate(gtclk);
+-	is_frac = state->frame_interval.numerator == 1001 ? 1 : 0;
+-
+-	/* calcualte clkrate */
+-	if (!is_frac)
+-		clkrate = CLK_INT;
+-	else
+-		clkrate = (CLK_INT * 1000) / 1001;
+-
+-	ret = clk_set_rate(gtclk, clkrate);
+-	if (ret)
+-		dev_err(core->dev, "failed to set clk rate = %d\n", ret);
+-
+-	clkrate = clk_get_rate(gtclk);
+-
+-	dev_dbg(core->dev, "clkrate = %lu is_frac = %d\n",
+-		clkrate, is_frac);
+-
+-	xsdirx_framer(core, state->framer_enable);
+-	xsdirx_setedherrcnttrigger(core, state->edhmask);
+-	xsdirx_setvidlockwindow(core, state->vidlockwin);
+-	xsdirx_set_modedetect(core, state->searchmask);
+-	xsdirx_enableintr(core, XSDIRX_INTR_ALL_MASK);
+-	xsdirx_globalintr(core, true);
+-	xsdirx_core_enable(core);
++        struct clk *gtclk;
++        unsigned long clkrate;
++        int ret, is_frac;
++        struct xsdirxss_core *core = &state->core;
++        u32 mode;
++        static int prev_is_frac = -1; /* Vishal - New line added */
++
++        mode = xsdirxss_read(core, XSDIRX_MODE_DET_STAT_REG);
++        mode &= XSDIRX_MODE_DET_STAT_RX_MODE_MASK;
++
++        /*
++         * TODO: For now, don't change the clock rate for any mode except 12G.
++         * In future, configure gt clock for all modes and enable clock only
++         * when needed (stream on/off).
++         */
++        if (mode != XSDIRX_MODE_12GI_MASK && mode != XSDIRX_MODE_12GF_MASK)
++               return;
++
++        is_frac = state->frame_interval.numerator == 1001 ? 1 : 0; /* Vishal - moved this line from below */
++
++        if (prev_is_frac == is_frac) /* Vishal - added this check */
++               return;
++
++        xsdirx_core_disable(core);
++        xsdirx_globalintr(core, false);
++        xsdirx_disableintr(core, XSDIRX_INTR_ALL_MASK);
++
++        /* get sdi_rx_clk */
++        gtclk = core->clks[1].clk;
++        clkrate = clk_get_rate(gtclk);
++
++        /* calcualte clkrate */
++        if (!is_frac)
++               clkrate = CLK_INT;
++        else
++               clkrate = (CLK_INT * 1000) / 1001;
++
++        ret = clk_set_rate(gtclk, clkrate);
++        if (ret)
++               dev_err(core->dev, "failed to set clk rate = %d\n", ret);
++
++        clkrate = clk_get_rate(gtclk);
++
++        dev_dbg(core->dev, "clkrate = %lu is_frac = %d\n",
++               clkrate, is_frac);
++
++        xsdirx_framer(core, state->framer_enable);
++        xsdirx_setedherrcnttrigger(core, state->edhmask);
++        xsdirx_setvidlockwindow(core, state->vidlockwin);
++        xsdirx_set_modedetect(core, state->searchmask);
++        xsdirx_enableintr(core, XSDIRX_INTR_ALL_MASK);
++        xsdirx_globalintr(core, true);
++        xsdirx_core_enable(core);
++
++        prev_is_frac = is_frac; /* Vishal - New line added */
+ }
++
+ /**
+  * xsdirx_get_stream_properties - Get SDI Rx stream properties
+  * @state: pointer to driver state
+-- 
+2.7.4
+
