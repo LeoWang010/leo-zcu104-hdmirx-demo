@@ -2556,7 +2556,7 @@ CONFIG_udev-extraconf=y
 #
 # hdmi-module
 #
-# CONFIG_kernel-module-hdmi is not set
+CONFIG_kernel-module-hdmi=y
 
 #
 # icu 
@@ -2795,7 +2795,7 @@ CONFIG_packagegroup-core-ssh-dropbear=y
 #
 # packagegroup-core-x11 
 #
-# CONFIG_packagegroup-core-x11 is not set
+CONFIG_packagegroup-core-x11=y
 # CONFIG_packagegroup-core-x11-utils-dbg is not set
 # CONFIG_packagegroup-core-x11-utils is not set
 # CONFIG_packagegroup-core-x11-utils-dev is not set
@@ -3287,10 +3287,10 @@ CONFIG_tcf-agent=y
 #
 # v4l-utils 
 #
-# CONFIG_v4l-utils is not set
-# CONFIG_libv4l is not set
+CONFIG_v4l-utils=y
+CONFIG_libv4l=y
 # CONFIG_ir-keytable is not set
-# CONFIG_media-ctl is not set
+CONFIG_media-ctl=y
 # CONFIG_v4l-utils-dbg is not set
 # CONFIG_rc-keymaps is not set
 # CONFIG_v4l-utils-dev is not set
@@ -3329,7 +3329,7 @@ CONFIG_tcf-agent=y
 #
 # watchdog-init
 #
-CONFIG_watchdog-init=y
+# CONFIG_watchdog-init is not set
 
 #
 # webkitgtk 
@@ -3538,7 +3538,7 @@ CONFIG_watchdog-init=y
 #
 # yavta 
 #
-# CONFIG_yavta is not set
+CONFIG_yavta=y
 # CONFIG_yavta-dbg is not set
 # CONFIG_yavta-dev is not set
 
@@ -3572,7 +3572,7 @@ CONFIG_watchdog-init=y
 #
 # gstreamer1.0-rtsp-server 
 #
-# CONFIG_gstreamer1.0-rtsp-server is not set
+CONFIG_gstreamer1.0-rtsp-server=y
 # CONFIG_gstreamer1.0-rtsp-server-dbg is not set
 # CONFIG_gstreamer1.0-rtsp-server-dev is not set
 # CONFIG_gstreamer1.0-rtsp-server-meta is not set
@@ -3671,7 +3671,7 @@ CONFIG_bridge-utils=y
 #
 # power management 
 #
-CONFIG_hellopm=y
+# CONFIG_hellopm is not set
 
 #
 # utils 
@@ -3695,15 +3695,15 @@ CONFIG_hellopm=y
 #
 # libdrm 
 #
-# CONFIG_libdrm is not set
-# CONFIG_libdrm-tests is not set
+CONFIG_libdrm=y
+CONFIG_libdrm-tests=y
 # CONFIG_libdrm-drivers is not set
 # CONFIG_libdrm-amdgpu is not set
 # CONFIG_libdrm-nouveau is not set
 # CONFIG_libdrm-dev is not set
 # CONFIG_libdrm-freedreno is not set
 # CONFIG_libdrm-radeon is not set
-# CONFIG_libdrm-kms is not set
+CONFIG_libdrm-kms=y
 # CONFIG_libdrm-dbg is not set
 # CONFIG_libdrm-omap is not set
 
@@ -4039,7 +4039,7 @@ CONFIG_hellopm=y
 #
 # packagegroup-petalinux-audio 
 #
-# CONFIG_packagegroup-petalinux-audio is not set
+CONFIG_packagegroup-petalinux-audio=y
 # CONFIG_packagegroup-petalinux-audio-dbg is not set
 # CONFIG_packagegroup-petalinux-audio-dev is not set
 
@@ -4060,7 +4060,7 @@ CONFIG_hellopm=y
 #
 # packagegroup-petalinux-gstreamer 
 #
-# CONFIG_packagegroup-petalinux-gstreamer is not set
+CONFIG_packagegroup-petalinux-gstreamer=y
 # CONFIG_packagegroup-petalinux-gstreamer-dev is not set
 # CONFIG_packagegroup-petalinux-gstreamer-dbg is not set
 
@@ -4074,7 +4074,7 @@ CONFIG_hellopm=y
 #
 # packagegroup-petalinux-matchbox 
 #
-# CONFIG_packagegroup-petalinux-matchbox is not set
+CONFIG_packagegroup-petalinux-matchbox=y
 # CONFIG_packagegroup-petalinux-matchbox-dbg is not set
 # CONFIG_packagegroup-petalinux-matchbox-dev is not set
 
@@ -4137,7 +4137,7 @@ CONFIG_hellopm=y
 #
 # packagegroup-petalinux-qt 
 #
-# CONFIG_packagegroup-petalinux-qt is not set
+CONFIG_packagegroup-petalinux-qt=y
 # CONFIG_packagegroup-petalinux-qt-dev is not set
 # CONFIG_packagegroup-petalinux-qt-dbg is not set
 # CONFIG_imageclass-populate-sdk-qt5 is not set
@@ -4166,7 +4166,7 @@ CONFIG_hellopm=y
 #
 # packagegroup-petalinux-v4lutils 
 #
-# CONFIG_packagegroup-petalinux-v4lutils is not set
+CONFIG_packagegroup-petalinux-v4lutils=y
 # CONFIG_packagegroup-petalinux-v4lutils-dbg is not set
 # CONFIG_packagegroup-petalinux-v4lutils-dev is not set
 
@@ -4187,7 +4187,7 @@ CONFIG_hellopm=y
 #
 # packagegroup-petalinux-x11 
 #
-# CONFIG_packagegroup-petalinux-x11 is not set
+CONFIG_packagegroup-petalinux-x11=y
 # CONFIG_packagegroup-petalinux-x11-dev is not set
 # CONFIG_packagegroup-petalinux-x11-dbg is not set
 
@@ -4219,11 +4219,20 @@ CONFIG_imagefeature-debug-tweaks=y
 # apps 
 #
 # CONFIG_gpio-demo is not set
+CONFIG_pcie-transcode-app=y
 # CONFIG_peekpoke is not set
+# CONFIG_sds is not set
+CONFIG_trd-init=y
+CONFIG_vcu-gst-app=y
 
 #
 # user packages 
 #
+CONFIG_custom-edid=y
+CONFIG_gst-shark=y
+CONFIG_gstreamer-vcu-examples=y
+# CONFIG_gstreamer-vcu-notebooks is not set
+CONFIG_vcu-qt=y
 
 #
 # PetaLinux RootFS Settings
